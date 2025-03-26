@@ -1,8 +1,7 @@
 import numpy as np
 import pickle
 import math
-from numba import cuda, jit
-import time
+from numba import cuda
 
 
 with open("/home/hkothari/harshil/brewster/rt_input.pic", 'rb') as f:

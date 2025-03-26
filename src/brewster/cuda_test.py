@@ -2,9 +2,12 @@ import numpy as np
 import pickle
 import math
 from numba import cuda, jit
-import time
 
-with open("/home/hkothari/harshil/brewster/forward_model_input.pic", 'rb') as f:
+# TODO make and test path to pickle file and gaslist.dat
+
+gaslistpath = "data/gaslist.dat"
+
+with open("data/forward_model_input_R10K_water.pic", 'rb') as f:
     inputs = pickle.load(f, encoding='bytes')
 
 temp, logg, R2D2, gasnum, logVMR, pcover, do_clouds, cloudnum, cloudrad, cloudsig, cloudprof, inlinetemps, press, inwavenum, linelist, cia, ciatemps, clphot, ophot, make_cf, do_bff, bff = inputs
@@ -52,7 +55,7 @@ tot_molmass = np.zeros((ngas))
 wavelen = 1e4 / inwavenum
 grav = 10. ** (logg) / 100.
 
-with open("gaslist.dat", "r") as file:
+with open(gaslistpath, "r") as file:
     maxgas = int(file.readline())
     gaslist = []
     masslist = []
@@ -344,7 +347,6 @@ def get_cia(cia, ciatemp, grav, ch4index, opd_cia, temp, press, VMR, fH2, fHe, f
 
     return opd_cia
 
-import math
 
 @cuda.jit(device=True)
 def bbplk(waven, T):
