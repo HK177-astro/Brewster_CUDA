@@ -4,7 +4,7 @@ import math
 from numba import cuda, jit
 import time
 
-with open("/home/hkothari/harshil/brewster/forward_model_input.pic", 'rb') as f:
+with open("/home/hkothari/harshil/brewster/forward_model_input_R10K_water.pic", 'rb') as f:
     inputs = pickle.load(f, encoding='bytes')
 
 temp, logg, R2D2, gasnum, logVMR, pcover, do_clouds, cloudnum, cloudrad, cloudsig, cloudprof, inlinetemps, press, inwavenum, linelist, cia, ciatemps, clphot, ophot, make_cf, do_bff, bff = inputs
