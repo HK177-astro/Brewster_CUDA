@@ -1,146 +1,7 @@
 import numpy as np
-import pickle
 import math
 from numba import cuda, jit
 
-# TODO make and test path to pickle file and gaslist.dat
-
-gaslistpath = "data/gaslist.dat"
-
-with open("data/forward_model_input_R10K_water.pic", 'rb') as f:
-    inputs = pickle.load(f, encoding='bytes')
-
-temp, logg, R2D2, gasnum, logVMR, pcover, do_clouds, cloudnum, cloudrad, cloudsig, cloudprof, inlinetemps, press, inwavenum, linelist, cia, ciatemps, clphot, ophot, make_cf, do_bff, bff = inputs
-
-temp, logg, R2D2, gasnum, logVMR, pcover, do_clouds, cloudnum,cloudrad, cloudsig, cloudprof, inlinetemps, press, inwavenum, linelist, cia, ciatemps, clphot, othphot,do_cf, bfing, bff = temp, logg, R2D2, gasnum, logVMR, pcover, do_clouds, cloudnum, cloudrad, cloudsig, cloudprof, inlinetemps, press, inwavenum, linelist, cia, ciatemps, clphot, ophot, make_cf, do_bff, bff
-
-maxwave = 100000
-nlayers = press.size
-ngas = gasnum.size
-nwave = inwavenum.size
-nlinetemps = inlinetemps.size
-nclouds = cloudnum.size
-npress = press.size
-# npatches = do_clouds.size
-
-# cloudname = np.empty((nclouds), dtype='U15')
-# cl_phot_press = np.zeros((npatches, maxwave))
-# oth_phot_press = np.zeros((npatches, maxwave))
-out_spec = np.empty((2, nwave))
-clphotspec = np.empty((maxwave))
-othphotspec = np.empty((maxwave))
-cf = np.empty((npress, nwave, nclouds))
-# cfunc = np.zeros((npatches, maxwave, maxlayers))
-
-ndens = np.zeros((nlayers))
-
-opd_scat = np.zeros((nlayers, nwave))
-gg = np.zeros((nlayers, nwave))
-opd_CIA = np.zeros((nlayers, nwave))
-opd_ext = np.zeros((nlayers, nwave))
-opd_lines = np.zeros((nlayers, nwave))
-opd_rayl = np.zeros((nlayers, nwave))
-opd_hmbff = np.zeros((nlayers, nwave))
-
-fe = np.zeros((nlayers))
-fH = np.zeros((nlayers))
-fHmin = np.zeros((nlayers))
-fH2 = np.zeros((nlayers))
-fHe = np.zeros((nlayers))
-mu = np.zeros((nlayers))
-tol_VMR = np.zeros((ngas))
-tot_molmass = np.zeros((ngas))
-
-
-wavelen = 1e4 / inwavenum
-grav = 10. ** (logg) / 100.
-
-with open(gaslistpath, "r") as file:
-    maxgas = int(file.readline())
-    gaslist = []
-    masslist = []
-    for igas in range(maxgas):
-        line = file.readline().split()
-        idum1 = int(line[0])
-        gas = line[1]
-        mass = float(line[2])
-        gaslist.append(gas)
-        masslist.append(mass)
-
-gasname = []
-molmass = []
-
-for igas in range(ngas):
-    gasname.append(gaslist[gasnum[igas] - 1].strip())
-    molmass.append(masslist[gasnum[igas] - 1])
-
-# with open("cloudlist.dat", "r") as file:
-#     maxcloud = int(file.readline())
-#     cloudlist = []
-#     for icloud in range(maxcloud):
-#         line = file.readline().split()
-#         idum2 = int(line[0])
-#         cloud = line[1]
-#         cloudlist.append(cloud)
-
-
-# for icloud in range(nclouds):
-#     if cloudnum[icloud] > 50:
-#         cloudname[icloud] = "mixto"
-#     else:
-#         cloudname[icloud] = cloudlist[cloudnum[icloud] - 1].strip()
-
-
-ch4index = 0
-
-VMRname = np.empty((ngas, nlayers), dtype=list)
-VMR = np.zeros((ngas, nlayers))
-molmass_layered = np.zeros((ngas, nlayers))
-
-for igas in range(ngas):
-    for ilayer in range(nlayers):
-        VMRname[igas, ilayer] = gasname[igas].strip()
-        VMR[igas, ilayer] = 10. ** (logVMR[igas, ilayer])
-        molmass_layered[igas, ilayer] = molmass[igas]
-
-if (VMRname[igas, 0] == "ch4"):
-    ch4index = igas
-
-
-if (bfing):
-    fe[0] = 10. ** bff[0, :]
-    fH[0] = 10. ** bff[1, :]
-    fHmin[0] = 10. ** bff[2, :]
-else:
-    fe[0] = 0.
-    fH[0] = 0.
-    fHmin[0] = 0.
-
-tol_VMR = VMR[:, 0]
-tot_molmass = molmass_layered[:, 0]
-
-for ilayer in range(nlayers):
-    allelse = (np.sum(tol_VMR) +
-               fe[ilayer] +
-               fH[ilayer] +
-               fHmin[ilayer])
-
-    fboth = 1.0 - allelse
-
-    fratio = 0.84
-
-    fH2[ilayer] = fratio * fboth
-    fHe[ilayer] = (1.0 - fratio) * fboth
-
-tot_VMR_molmass = np.sum(tol_VMR * tot_molmass)
-
-# Compute temperature differences
-# tdiff = np.zeros((nlayers, nlinetemps), dtype=float)
-# Tlay1 = np.zeros((nlayers), dtype=float)
-# for ilayer in range(nlayers):
-#     for i in range(nlinetemps):
-#         tdiff[ilayer, i] = abs(inlinetemps[i] - temp[ilayer])
-#     Tlay1[ilayer] = np.argmin(tdiff)
 
 @cuda.jit
 def layer_thickness_kernel(grav, tot_VMR_molmass, mu, fH, fHmin, fH2, fHe, nlayers, press, temp, dp, dz):
@@ -176,6 +37,7 @@ def layer_thickness_kernel(grav, tot_VMR_molmass, mu, fH, fHmin, fH2, fHe, nlaye
 
             dp[ilayer] = p2 - p1
             dz[ilayer] = abs((R_spec * temp[ilayer] / grav) * math.log(p1 / p2))
+
 
 @cuda.jit
 def compute_ndens_kernel(press, temp, ndens):
@@ -240,6 +102,7 @@ def line_mixer(ilayer, opd_lines, linelist, linetemps, dz, ngas, nwave, ndens, n
 
     return opd_lines[ilayer, :]
 
+
 @cuda.jit
 def get_ray_kernel(ch4index, wavelen, nwave, ndens, nlayers, opd_rayl, VMR, fH2, fHe, dz):
     # Thread indices
@@ -284,6 +147,7 @@ def get_ray_kernel(ch4index, wavelen, nwave, ndens, nlayers, opd_rayl, VMR, fH2,
             taur += cold * gasss[nn] * tec * 1.0e-5 / XN0
 
         opd_rayl[ilayer, iwave] = taur
+
 
 @jit(nopython=True)
 def get_cia(cia, ciatemp, grav, ch4index, opd_cia, temp, press, VMR, fH2, fHe, fH, dz):
@@ -541,6 +405,7 @@ def gfluxi_device(TEMP, TAU, W0, COSBAR, wavenum, RSF, fup, fdown):
 
     return fup[0]
 
+
 @cuda.jit
 def run_RT_kernel(clphotspec, othphotspec, cf, clphot, othphot, do_cf, inwavenum, cloudy, press, temp, nwave, opd_ext, opd_lines, opd_CIA, opd_rayl, opd_scat, opd_hmbff, gg, dp, pcover, spectrum, upflux):
     # Thread indices
@@ -732,6 +597,3 @@ def forward(grav, tot_VMR_molmass, mu, fH, fHmin, fH2, fHe, nlayers, press, temp
 
     return spectrum
 
-spectrum = forward(grav, tot_VMR_molmass, mu, fH, fHmin, fH2, fHe, nlayers, press, temp, linelist, inlinetemps, ngas, nwave, nlinetemps, VMR, ch4index, wavelen, pcover, clphot, othphot, do_cf, clphotspec, othphotspec, cf, inwavenum)
-
-print("spectrum : ", spectrum)
